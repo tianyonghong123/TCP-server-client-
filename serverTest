@@ -1,0 +1,120 @@
+package io.bcaas.test;
+
+import java.io.*;
+import java.net.ServerSocket;
+import java.net.Socket;
+import java.net.SocketAddress;
+
+/**
+ * @author: tianyonghong
+ * @date: 2018/8/13
+ * @description
+ */
+public class ServerTest {
+    public static final int PORT = 12345;//监听的端口号
+
+    public static void main(String[] args) {
+        System.out.println("服务器启动...\n");
+        ServerTest server = new ServerTest();
+        server.init();
+    }
+
+    public void init() {
+        try {
+            ServerSocket serverSocket = new ServerSocket(PORT);
+            while (true) {
+                // 一旦有堵塞, 则表示服务器与客户端获得了连接
+                Socket client = serverSocket.accept();
+                // 处理这次连接
+                new HandlerThread(client);
+            }
+        } catch (Exception e) {
+            System.out.println("服务器异常: " + e.getMessage());
+        }
+    }
+
+    private class HandlerThread implements Runnable {
+        private Socket socket;
+
+        public HandlerThread(Socket client) {
+            socket = client;
+            new Thread(this).start();
+        }
+
+        public void run() {
+            while (true) {
+                BufferedReader bufferedReader = null;
+                try {
+                    BufferedWriter bufferedWriter = null;
+                    PrintWriter printWriter = null;
+                    bufferedReader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+                    // 向客户端回复信息
+                    printWriter = new PrintWriter(new OutputStreamWriter(socket.getOutputStream()));
+                    try {
+                        while (socket.isConnected()) {
+                            try {
+                                socket.sendUrgentData(0xFF); // 發送心跳包
+                            } catch (Exception e) {
+                            }
+                            // 读取客户端数据
+                            String clientInputStr = bufferedReader.readLine();
+                            // 处理客户端数据
+                            if (clientInputStr != null && clientInputStr.trim().length() != 0) {
+                                System.out.println("客户端发过来的内容:" + clientInputStr);
+                                // 向客户端回复信息
+                                //printWriter = new PrintWriter(new OutputStreamWriter(socket.getOutputStream()));
+                                String s = "OK，收到了，这是响应。\n";
+                                printWriter.write(s);
+                                printWriter.flush();
+                                System.out.println("响应成功。");
+                            }
+                        }
+//                        if (socket.isConnected()) {
+//                            try {
+//                                // 向客户端回复信息
+//                                printWriter = new PrintWriter(new OutputStreamWriter(socket.getOutputStream()));
+//                                String s = "OK，收到了，这是响应。\n";
+//                                printWriter.write(s);
+//                                printWriter.flush();
+//                                System.out.println("响应成功。");
+//
+//                            } catch (Exception e) {
+//                                System.out.println("回复客户端异常..");
+//                                e.printStackTrace();
+//                                break;
+//                            } finally {
+//                                if (printWriter != null) {
+//                                    printWriter.close();
+//                                }
+//                            }
+//                        }
+                    } catch (Exception e) {
+                        System.out.println("读取客户端数据异常..");
+                        e.printStackTrace();
+                        break;
+                    } finally {
+                        if (bufferedReader != null) {
+                            bufferedReader.close();
+                        }
+                        if (printWriter != null) {
+                            printWriter.close();
+                        }
+                    }
+                } catch (Exception e) {
+                    System.out.println("服务器 run 异常: ");
+                    e.printStackTrace();
+                } finally {
+                    if (socket != null) {
+                        try {
+                            socket.close();
+                        } catch (Exception e) {
+                            socket = null;
+                            System.out.println("服务端 finally 异常:" + e.getMessage());
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
