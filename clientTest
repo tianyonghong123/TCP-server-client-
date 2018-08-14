@@ -1,0 +1,172 @@
+package io.bcaas.test;
+
+import java.io.*;
+import java.net.Socket;
+import java.util.LinkedList;
+import java.util.Queue;
+
+/**
+ * @author: tianyonghong
+ * @date: 2018/8/13
+ * @description
+ */
+
+public class SendActionThread extends Thread {
+
+    //服务器地址
+    public static final String IP_ADDR = "localhost";
+    //服务器端口号
+    public static final int PORT = 12345;
+    //是否存活
+    private boolean alive = true;
+
+    public static Socket socket = null;
+
+    /**
+     * 关闭线程
+     */
+    public void kill() {
+        this.alive = false;
+    }
+
+    //发送交易队列
+    public static Queue<String> sendQueue = new LinkedList<>();
+
+    //接收响应队列
+    public static Queue<String> receiveQueue = new LinkedList<>();
+
+    @Override
+    public final void run() {
+
+        try {
+            //初始化连接socket
+            socket = initSocket(IP_ADDR, PORT);
+            System.out.println("初始化连接socket...");
+
+            //开启接收线程
+            new HandlerThread(socket);
+
+        } catch (Exception e) {
+            System.out.println("初始化socket失败。。");
+            kill();
+        }
+
+        //线程存活状态下，监听sendQuean队列 有数据则发送到服务端
+        while (alive) {
+            try {
+                String send = sendQueue.poll();
+                if (send != null) {
+                    //调用发送方法 写入socket
+                    writeTOSocket(socket, send);
+                }
+            } catch (Exception e) {
+                System.out.println("写入服务端数据异常。");
+                e.printStackTrace();
+            }
+        }
+    }
+
+    /**
+     * 用于向服务端写入数据
+     *
+     * @param socket   socket对象
+     * @param writeStr 写入字符串
+     */
+    public static void writeTOSocket(Socket socket, String writeStr) {
+        PrintWriter printWriter = null;
+        try {
+            if (socket.isConnected()) {
+                //向服务器端发送数据
+                printWriter = new PrintWriter(socket.getOutputStream());
+                printWriter.write(writeStr + " \n");
+                printWriter.flush();
+
+                System.out.println("已发送数据...");
+            } else {
+                System.out.println("socket closed..");
+            }
+        } catch (Exception e) {
+            System.out.println("回复客户端异常");
+            e.printStackTrace();
+        }finally {
+            if(printWriter != null){
+                printWriter.close();
+            }
+        }
+    }
+
+    /**
+     *
+     * 初始化socket
+     *
+     * @param IP_ADDR
+     * @param PORT
+     * @return
+     * @throws Exception
+     */
+    private Socket initSocket(String IP_ADDR, int PORT) throws Exception {
+        Socket socket = new Socket(IP_ADDR, PORT);
+        socket.setKeepAlive(true);
+        return socket;
+    }
+
+    /**
+     * 用于接受服务端响应数据
+     */
+    public class HandlerThread implements Runnable {
+        private Socket socket;
+
+        public HandlerThread(Socket client) {
+            socket = client;
+            new Thread(this).start();
+        }
+
+        public final void run() {
+            while (true) {
+                try {
+                    //读取服务器端数据
+                    BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+                    try {
+                        while (socket.isConnected()) {
+                            try {
+                                socket.sendUrgentData(0xFF); // 發送心跳包
+                            } catch (Exception e) {
+                                System.out.println("socket连接异常。。");
+                                socket.close();
+                                break;
+                            }
+                            String readLine = bufferedReader.readLine();
+                            if (readLine != null && readLine.trim().length() != 0) {
+                                System.out.println("服务器端响应值是: " + readLine);
+                                receiveQueue.add(readLine);
+                            }
+                        }
+                    } catch (Exception e) {
+                        System.out.println("读取服务端数据异常。");
+                        e.printStackTrace();
+                    } finally {
+                        if (bufferedReader != null) {
+                            bufferedReader.close();
+                        }
+                    }
+                } catch (Exception e) {
+                    System.out.println("客户端异常。");
+                    e.printStackTrace();
+                }
+            }
+        }
+    }
+
+    public static void main(String[] args) throws Exception {
+        System.out.println("客户端启动...");
+
+        SendActionThread sendActionThread = new SendActionThread();
+        sendActionThread.start();
+
+        for (int i = 0; i <= 20; i++) {
+            sendQueue.add("发送给server一个数据，编号：" + i);
+        }
+
+
+    }
+}
